@@ -31,6 +31,10 @@ def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
     # Optimize all parameters that require gradients (the grad CNN branch and the new fusion FC)
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     
+    # Setup LR Scheduler
+    # Reduces learning rate by a factor of 0.1 if val_loss doesn't improve for 2 epochs
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
+    
     # Setup Checkpointer
     checkpointer = Checkpointer()
     
@@ -83,6 +87,10 @@ def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
         
         print(f"Train Loss: {epoch_train_loss:.4f}")
         print(f"Val Loss:   {epoch_val_loss:.4f} | Val Acc: {epoch_val_acc:.4f}")
+        
+        # Scheduler Step
+        # Pass the validation loss to the scheduler to dynamically tune the LR
+        scheduler.step(epoch_val_loss)
         
         # Checkpointing
         is_best = epoch_val_acc > best_val_acc
