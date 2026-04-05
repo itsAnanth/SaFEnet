@@ -1,3 +1,5 @@
+import random
+import numpy as np
 import os
 import torch
 import torch.nn as nn
@@ -9,7 +11,19 @@ from src.data import get_dataloaders, download_cifake
 from src.model import get_resnet_feature_extractor, get_baseline_resnet
 from src.utils import Checkpointer, FocalLoss
 
+def set_seed(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
+    set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"Using device: {device}")
@@ -33,7 +47,7 @@ def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
     
     # Setup LR Scheduler
     # Reduces learning rate by a factor of 0.1 if val_loss doesn't improve for 2 epochs
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2)
     
     # Setup Checkpointer
     checkpointer = Checkpointer()
