@@ -8,7 +8,7 @@ from tqdm import tqdm
 import argparse
 
 from src.data import get_dataloaders, download_cifake
-from src.model import get_resnet_feature_extractor, get_baseline_resnet
+from src.model import get_safenet, get_baseline_resnet
 from src.utils import Checkpointer, FocalLoss
 
 def set_seed(seed=42):
@@ -37,7 +37,7 @@ def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
     print(f"Classes found: {classes}")
     
     # Setup Model
-    model = get_resnet_feature_extractor(num_classes=len(classes))
+    model = get_safenet(branches=('spatial', ), num_classes=len(classes))
     model = model.to(device)
     
     # Setup Loss and Optimizer
@@ -117,7 +117,7 @@ def train_model(data_dir, num_epochs=10, batch_size=32, lr=1e-3, num_workers=4):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train CIFAKE Classifier")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to CIFAKE dataset root (should contain train and test folders)")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs to train")
+    parser.add_argument("--epochs", type=int, default=5, help="Number of epochs to train")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
