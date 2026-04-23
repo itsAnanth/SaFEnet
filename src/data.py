@@ -35,8 +35,8 @@ def download_cifake(data_dir):
 
 def get_dataloaders(data_dir, batch_size=32, num_workers=4, val_split=0.2):
     """
-    Expects data_dir to have subfolders 'train' and 'test'.
-    If val_split is > 0, it splits the train set into train and val.
+    Expects data_dir to have subfolders 'train' and 'test' (or 'val').
+    If val_split is > 0 and no separate val/test dir exists, it splits the train set into train and val.
     """
     
     # ResNet expects 224x224 and ImageNet normalization
@@ -49,18 +49,29 @@ def get_dataloaders(data_dir, batch_size=32, num_workers=4, val_split=0.2):
     
     train_dir = os.path.join(data_dir, 'train')
     test_dir = os.path.join(data_dir, 'test')
+    val_dir = os.path.join(data_dir, 'val')
     
     full_train_dataset = datasets.ImageFolder(root=train_dir, transform=transform)
-    test_dataset = datasets.ImageFolder(root=test_dir, transform=transform)
     
-    num_train = len(full_train_dataset)
-    num_val = int(val_split * num_train)
-    num_train = num_train - num_val
-    
-    train_dataset, val_dataset = random_split(full_train_dataset, [num_train, num_val])
+    if os.path.exists(test_dir):
+        eval_dataset = datasets.ImageFolder(root=test_dir, transform=transform)
+        train_dataset, val_dataset = random_split(full_train_dataset, [len(full_train_dataset) - int(val_split * len(full_train_dataset)), int(val_split * len(full_train_dataset))])
+        test_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    elif os.path.exists(val_dir):
+        val_dataset = datasets.ImageFolder(root=val_dir, transform=transform)
+        train_dataset = full_train_dataset
+        test_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers) # Use val as test
+    else:
+        num_train = len(full_train_dataset)
+        num_val = int(val_split * num_train)
+        num_train = num_train - num_val
+        train_dataset, val_dataset = random_split(full_train_dataset, [num_train, num_val])
+        test_loader = None
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     
+    if test_loader is None:
+        test_loader = val_loader
+        
     return train_loader, val_loader, test_loader, full_train_dataset.classes
