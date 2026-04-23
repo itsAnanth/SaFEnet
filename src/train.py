@@ -147,7 +147,21 @@ def train_model(config: TrainConfig):
             # Unscale before reading grad norms (only log on last batch of epoch)
             scaler.unscale_(optimizer)
 
-            
+            # Clip each group separately — tighter on backbone, looser on aux
+            torch.nn.utils.clip_grad_norm_(
+                [p for g in optimizer.param_groups
+                if g.get('name') == 'spatial_backbone'
+                for p in g['params']],
+                max_norm=1.0
+            )
+            torch.nn.utils.clip_grad_norm_(
+                [p for g in optimizer.param_groups
+                if g.get('name') in ('aux_branches', 'cmaf_classifier')
+                for p in g['params']],
+                max_norm=5.0
+            )
+
+            scaler.step(optimizer)
             if batch_idx == len(train_loader) - 1:
                 epoch_grad_norms = log_gradient_norms(model, optimizer)
 

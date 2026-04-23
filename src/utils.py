@@ -12,7 +12,6 @@ class Checkpointer:
         os.makedirs(self.log_dir, exist_ok=True)
         
         self.metrics = {
-            "model_name": None,
             "description": None,
             "config": config,
             "train_loss": [],
