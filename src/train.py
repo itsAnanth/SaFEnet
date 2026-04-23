@@ -33,9 +33,9 @@ def set_seed(seed=42):
 def get_model(config):
     if config.model == "safenet":
         model = get_safenet(num_classes=2)
-    elif config.name == "resnet":
+    elif config.model == "resnet":
         model = get_baseline_resnet(num_classes=2)
-    elif config.name == "ladevic":
+    elif config.model == "ladevic":
         model = get_ladevic(num_classes=2)
     return model
 
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
     parser.add_argument("--loss", type=str, default="focal", choices=["focal", "bce", "ce"], help="Loss function to use")
-    parser.add_argument("--model", type=str, default="safenet", choices=["safenet", "resnet"], help="Model architecture to use")
+    parser.add_argument("--model", type=str, default="safenet", choices=["safenet", "resnet", "ladevic"], help="Model architecture to use")
     args = parser.parse_args()
     config = TrainConfig(
         data_dir=args.data_dir,
