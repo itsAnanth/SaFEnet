@@ -331,23 +331,23 @@ class FrequencyBranch(nn.Module):
         counts = torch.bincount(flat_bin, minlength=self.num_radial_bins).float()
         radial = radial / (counts.unsqueeze(0) + 1e-6)
 
-        return torch.log(radial + 1e-6)                            # log-scale
+        return torch.log(radial + 1e-6)     
 
     def forward(self, gray):
         """gray: (B, 1, H, W)"""
-        fft2      = torch.fft.fft2(gray)
-        shifted   = torch.fft.fftshift(fft2, dim=(-2, -1))
+        fft2 = torch.fft.fft2(gray)
+        shifted = torch.fft.fftshift(fft2, dim=(-2, -1))
 
-        log_mag   = torch.log(torch.abs(shifted) + 1e-6)          # (B,1,H,W)
-        phase     = torch.angle(shifted)                           # (B,1,H,W)
+        log_mag = torch.log(torch.abs(shifted) + 1e-6)         # (B,1,H,W)
+        phase = torch.angle(shifted)                           # (B,1,H,W)
 
         # 2-channel input: [log magnitude, phase]
-        freq_input = torch.cat([log_mag, phase], dim=1)            # (B,2,H,W)
+        freq_input = torch.cat([log_mag, phase], dim=1)        # (B,2,H,W)
 
-        cnn_feat    = self.cnn(freq_input)                         # (B, 96)
+        cnn_feat = self.cnn(freq_input)                        # (B, 96)
         radial_feat = self.radial_mlp(
             self._radial_power_spectrum(gray)
-        )                                                          # (B, 32)
+        )                                                      # (B, 32)
 
         return self.fuse(torch.cat([cnn_feat, radial_feat], dim=1))  # (B, 128)
 
@@ -513,6 +513,20 @@ def get_safenet(
     """
     return SaFENet(num_classes=num_classes, branches=branches, feat_dim=feat_dim)
 
+def aux_Warmup(epoch, model: SaFENet, AUX_WARMUP_EPOCHS=3):
+            # Freeze backbone during warmup so aux branches develop independently
+        if epoch < AUX_WARMUP_EPOCHS:
+            for p in model.spatial_features.parameters():
+                p.requires_grad = False
+            for p in model.spatial_cbam.parameters():
+                p.requires_grad = False
+        elif epoch == AUX_WARMUP_EPOCHS:
+            # Unfreeze and let differential LR take over
+            for p in model.spatial_features.parameters():
+                p.requires_grad = True
+            for p in model.spatial_cbam.parameters():
+                p.requires_grad = True
+            print(f"Epoch {epoch+1}: spatial backbone unfrozen")
 
 # =========================================================================== #
 # Quick sanity check                                                          #
