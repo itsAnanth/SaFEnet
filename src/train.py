@@ -14,7 +14,7 @@ from src.utils import Checkpointer
 from src.losses import FocalLoss
 from src.config import TrainConfig
 from src.models.ResNet18 import get_resnet18
-from src.models.proto import get_safenet, get_param_groups
+from src.models.proto import get_safenet, get_param_groups, aux_Warmup
 from src.models.Ladevic import get_ladevic
 from src.models.MobileNetv2 import get_MobileNetV2
 
@@ -121,7 +121,12 @@ def train_model(config: TrainConfig):
         'val_f1': [], 'val_auc': [], 'lr': [], 'grad_norms': []
     }
 
+
     for epoch in range(config.epochs):
+        # if config.model == "safenet":
+        #     aux_Warmup(epoch, model)  # Linearly warm up aux branch LRs for first 5 epochs
+
+
         print(f"\nEpoch {epoch+1}/{config.epochs}")
         print("-" * 50)
 
@@ -161,7 +166,6 @@ def train_model(config: TrainConfig):
                 max_norm=5.0
             )
 
-            scaler.step(optimizer)
             if batch_idx == len(train_loader) - 1:
                 epoch_grad_norms = log_gradient_norms(model, optimizer)
 
