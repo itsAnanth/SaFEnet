@@ -155,8 +155,8 @@ def train_model(config: TrainConfig):
             # Unscale before reading grad norms (only log on last batch of epoch)
             scaler.unscale_(optimizer)
 
-            if config.model == "safenet":
-                clip_gradients(optimizer)
+            # if config.model == "safenet":
+            #     clip_gradients(optimizer)
 
             if batch_idx == len(train_loader) - 1:
                 epoch_grad_norms = log_gradient_norms(model, optimizer)
