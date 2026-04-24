@@ -12,7 +12,7 @@ from torch.amp import autocast, GradScaler
 from dataclasses import dataclass, asdict
 from src.data import get_genimage_dataloaders
 from src.utils import Checkpointer
-from src.losses import FocalLoss
+from src.losses import FocalLoss, BCELoss
 from src.config import TrainConfig
 from src.models.ResNet18 import get_resnet18
 from src.models.proto import get_safenet, get_param_groups, aux_Warmup, clip_gradients
@@ -41,8 +41,13 @@ def get_model(config):
         # get_param_groups returns groups with differential LRs.
         # base_lr should be ~1e-3 so aux branches get 5e-4 (enough to train from scratch)
         # and backbone fine-tune gets 1e-4.
-        param_groups = get_param_groups(model, base_lr=config.lr)
-        optimizer = optim.AdamW(param_groups, weight_decay=1e-4)
+
+        # optimizer = optim.Adam(model.parameters(), lr=config.lr)
+        optimizer = optim.AdamW(
+            get_param_groups(model, base_lr=config.lr) if config.diff_lr else model.parameters(),
+            weight_decay=1e-4
+        )
+
 
     elif config.model == "resnet18":
         model = get_resnet18(num_classes=2)
@@ -104,6 +109,8 @@ def train_model(config: TrainConfig):
 
     if config.loss == "focal":
         criterion = FocalLoss(gamma=2.0, num_classes=len(classes))
+    elif config.loss == "bce":
+        criterion = BCELoss()
     else:
         criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
@@ -127,7 +134,7 @@ def train_model(config: TrainConfig):
 
 
     for epoch in range(config.epochs):
-        if config.model == "safenet":
+        if config.model == "safenet" and config.aux_warmup:
             aux_Warmup(epoch, model)
 
 
@@ -156,7 +163,7 @@ def train_model(config: TrainConfig):
             # Unscale before reading grad norms (only log on last batch of epoch)
             scaler.unscale_(optimizer)
 
-            if config.model == "safenet":
+            if config.model == "safenet" and config.clip_grad:
                 clip_gradients(optimizer)
 
             if batch_idx == len(train_loader) - 1:
@@ -308,9 +315,16 @@ if __name__ == "__main__":
                         help="Base LR. SaFENet aux branches get 0.5x, backbone gets 0.1x.")
     parser.add_argument("--num_workers", type=int,   default=4)
     parser.add_argument("--loss",        type=str,   default="focal",
-                        choices=["focal", "ce"])
+                        choices=["focal", "ce", "bce"])
     parser.add_argument("--model",       type=str,   default="safenet",
                         choices=["safenet", "resnet18", "mobilenetv2", "ladevic", "mulki"])
+    parser.add_argument("--aux_warmup", action="store_true",
+                        help="Whether to linearly warm up aux branch LRs for first 5 epochs (only applies to SaFENet).")
+    parser.add_argument("--clip_grad", action="store_true",
+                        help="Whether to clip gradients to max norm of 1.0 (only applies to SaFENet).")
+    parser.add_argument("--diff_lr", action="store_true",
+                        help="Whether to use differential learning rates for backbone and aux branches (only applies to SaFENet). If not set, all params use the same LR.")
+    
     args   = parser.parse_args()
     config = TrainConfig(
         data_dir=args.data_dir,
@@ -320,5 +334,8 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         loss=args.loss,
         model=args.model,
+        aux_warmup=args.aux_warmup,
+        clip_grad=args.clip_grad,   
+        diff_lr=args.diff_lr
     )
     train_model(config)

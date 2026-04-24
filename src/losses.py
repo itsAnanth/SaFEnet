@@ -2,6 +2,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+class BCELoss(nn.Module):
+    """
+    Standard Binary Cross-Entropy for a 2-class model that outputs (B, 2) logits.
+    Extracts the positive-class logit and converts long labels to float so the
+    interface matches CrossEntropyLoss and FocalLoss: criterion(outputs, labels).
+    """
+    def __init__(self):
+        super().__init__()
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def forward(self, inputs, targets):
+        return self.bce(inputs[:, 1], targets.float())
+
 class FocalLoss(nn.Module):
     """
     Focal Loss for hard example mining.

@@ -73,12 +73,26 @@ class CMAF(nn.Module):
         self.feat_dim = feat_dim
         n = len(active_branches)
 
-        # Project each branch into the shared latent space
-        self.projections = nn.ModuleDict({
-            b: nn.Sequential(
-                nn.Linear(BRANCH_DIMS[b], feat_dim),
-                nn.LayerNorm(feat_dim),
+        # Project each branch into the shared latent space.
+        # For branches where in_dim >> feat_dim (e.g. spatial: 1280→256) use a
+        # 2-layer MLP with an intermediate bottleneck to preserve information.
+        def _make_proj(in_dim, out_dim):
+            if in_dim > out_dim * 2:
+                mid = max(in_dim // 4, out_dim)
+                return nn.Sequential(
+                    nn.Linear(in_dim, mid),
+                    nn.GELU(),
+                    nn.LayerNorm(mid),
+                    nn.Linear(mid, out_dim),
+                    nn.LayerNorm(out_dim),
+                )
+            return nn.Sequential(
+                nn.Linear(in_dim, out_dim),
+                nn.LayerNorm(out_dim),
             )
+
+        self.projections = nn.ModuleDict({
+            b: _make_proj(BRANCH_DIMS[b], feat_dim)
             for b in active_branches
         })
 
@@ -500,7 +514,7 @@ def get_param_groups(model, base_lr=1e-3):
 def get_safenet(
     branches=('spatial', 'gradient', 'frequency'),
     num_classes=2,
-    feat_dim=128,
+    feat_dim=256,
 ):
     """
     Convenience factory for full model or ablation variants.
