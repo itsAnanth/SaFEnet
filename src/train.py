@@ -1,4 +1,5 @@
 import os
+import json
 import random
 import argparse
 import numpy as np
@@ -9,7 +10,7 @@ from tqdm import tqdm
 from torchmetrics.classification import BinaryF1Score, BinaryAUROC
 from torch.amp import autocast, GradScaler
 from dataclasses import dataclass, asdict
-from src.data import get_dataloaders
+from src.data import get_genimage_dataloaders
 from src.utils import Checkpointer
 from src.losses import FocalLoss
 from src.config import TrainConfig
@@ -41,7 +42,7 @@ def get_model(config):
         # base_lr should be ~1e-3 so aux branches get 5e-4 (enough to train from scratch)
         # and backbone fine-tune gets 1e-4.
         param_groups = get_param_groups(model, base_lr=config.lr)
-        optimizer = optim.Adam(param_groups)
+        optimizer = optim.AdamW(param_groups, weight_decay=1e-4)
 
     elif config.model == "resnet18":
         model = get_resnet18(num_classes=2)
@@ -88,7 +89,7 @@ def train_model(config: TrainConfig):
     print(f"Using device: {device}")
 
     print("Loading data...")
-    train_loader, val_loader, test_loader, classes = get_dataloaders(
+    train_loader, val_loader, test_loader, classes = get_genimage_dataloaders(
         config.data_dir, config.batch_size, config.num_workers
     )
     print(f"Classes found: {classes}")
@@ -126,8 +127,8 @@ def train_model(config: TrainConfig):
 
 
     for epoch in range(config.epochs):
-        # if config.model == "safenet":
-        #     aux_Warmup(epoch, model)  # Linearly warm up aux branch LRs for first 5 epochs
+        if config.model == "safenet":
+            aux_Warmup(epoch, model)
 
 
         print(f"\nEpoch {epoch+1}/{config.epochs}")
@@ -155,8 +156,8 @@ def train_model(config: TrainConfig):
             # Unscale before reading grad norms (only log on last batch of epoch)
             scaler.unscale_(optimizer)
 
-            # if config.model == "safenet":
-            #     clip_gradients(optimizer)
+            if config.model == "safenet":
+                clip_gradients(optimizer)
 
             if batch_idx == len(train_loader) - 1:
                 epoch_grad_norms = log_gradient_norms(model, optimizer)
@@ -195,8 +196,8 @@ def train_model(config: TrainConfig):
 
         epoch_val_loss = val_loss / len(val_loader.dataset)
         epoch_val_acc  = (corrects.double() / len(val_loader.dataset)).item()
-        epoch_f1  = f1_metric(torch.tensor(all_preds), torch.tensor(all_labels)).item()
-        epoch_auc = auc_metric(torch.tensor(all_probs), torch.tensor(all_labels)).item()
+        epoch_f1  = f1_metric(torch.tensor(all_preds).to(device), torch.tensor(all_labels).to(device)).item()
+        epoch_auc = auc_metric(torch.tensor(all_probs).to(device), torch.tensor(all_labels).to(device)).item()
 
         current_lrs = [g['lr'] for g in optimizer.param_groups]
         print(f"Train Loss: {epoch_train_loss:.4f}")
@@ -257,6 +258,44 @@ def train_model(config: TrainConfig):
     print(f"\nBest val accuracy: {best_val_acc:.4f}")
     print("=" * 60)
 
+    # ---------------------------------------------------------------------- #
+    # Final Test Evaluation (best checkpoint)                                 #
+    # ---------------------------------------------------------------------- #
+    best_ckpt_path = os.path.join(checkpointer.log_dir, "checkpoint_best.pt")
+    if os.path.exists(best_ckpt_path):
+        print("\nRunning final test evaluation on best checkpoint...")
+        model.load_state_dict(torch.load(best_ckpt_path, map_location=device)["model_state_dict"])
+        model.eval()
+        test_loss = 0.0
+        test_corrects = 0
+        test_labels_all, test_preds_all, test_probs_all = [], [], []
+
+        with torch.no_grad():
+            for inputs, labels in tqdm(test_loader, desc="Test"):
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                test_loss += criterion(outputs, labels).item() * inputs.size(0)
+                probs = torch.softmax(outputs, dim=1)
+                _, preds = torch.max(outputs, 1)
+                test_corrects += (preds == labels).sum()
+                test_labels_all.extend(labels.cpu().numpy())
+                test_preds_all.extend(preds.cpu().numpy())
+                test_probs_all.extend(probs[:, 1].cpu().numpy())
+
+        test_acc = (test_corrects.double() / len(test_loader.dataset)).item()
+        test_f1  = f1_metric(torch.tensor(test_preds_all).to(device), torch.tensor(test_labels_all).to(device)).item()
+        test_auc = auc_metric(torch.tensor(test_probs_all).to(device), torch.tensor(test_labels_all).to(device)).item()
+        test_loss /= len(test_loader.dataset)
+
+        print(f"Test  Loss: {test_loss:.4f} | Acc: {test_acc:.4f} | F1: {test_f1:.4f} | AUC: {test_auc:.4f}")
+
+        checkpointer.metrics["test_loss"] = test_loss
+        checkpointer.metrics["test_acc"]  = test_acc
+        checkpointer.metrics["test_f1"]   = test_f1
+        checkpointer.metrics["test_auc"]  = test_auc
+        with open(os.path.join(checkpointer.log_dir, "metrics.json"), "w") as f:
+            json.dump(checkpointer.metrics, f, indent=4)
+
     return history
 
 
@@ -269,7 +308,7 @@ if __name__ == "__main__":
                         help="Base LR. SaFENet aux branches get 0.5x, backbone gets 0.1x.")
     parser.add_argument("--num_workers", type=int,   default=4)
     parser.add_argument("--loss",        type=str,   default="focal",
-                        choices=["focal", "bce", "ce"])
+                        choices=["focal", "ce"])
     parser.add_argument("--model",       type=str,   default="safenet",
                         choices=["safenet", "resnet18", "mobilenetv2", "ladevic", "mulki"])
     args   = parser.parse_args()

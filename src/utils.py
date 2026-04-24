@@ -21,7 +21,10 @@ class Checkpointer:
             "auc": []
         }
         
-        self.metrics["description"] = str(input("[CHECKPOINTER] Enter a description for this training run: "))
+        try:
+            self.metrics["description"] = input("[CHECKPOINTER] Enter a description for this training run: ")
+        except EOFError:
+            self.metrics["description"] = ""
         metrics_path = os.path.join(self.log_dir, "metrics.json")
         with open(metrics_path, "w") as f:
             json.dump(self.metrics, f, indent=4)
