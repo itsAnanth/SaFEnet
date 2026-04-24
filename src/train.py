@@ -14,9 +14,10 @@ from src.utils import Checkpointer
 from src.losses import FocalLoss
 from src.config import TrainConfig
 from src.models.ResNet18 import get_resnet18
-from src.models.proto import get_safenet, get_param_groups, aux_Warmup
+from src.models.proto import get_safenet, get_param_groups, aux_Warmup, clip_gradients
 from src.models.Ladevic import get_ladevic
 from src.models.MobileNetv2 import get_MobileNetV2
+from src.models.Mulki import get_mulki
 
 
 def set_seed(seed=42):
@@ -44,16 +45,18 @@ def get_model(config):
 
     elif config.model == "resnet18":
         model = get_resnet18(num_classes=2)
-        optimizer = optim.Adam(model.parameters(), lr=config.lr)  # BUG FIX: was missing model.parameters()
+        optimizer = optim.Adam(model.parameters(), lr=config.lr)  
 
     elif config.model == "ladevic":
         model = get_ladevic(num_classes=2)
-        optimizer = optim.Adam(model.parameters(), lr=config.lr)  # BUG FIX: was missing model.parameters()
+        optimizer = optim.Adam(model.parameters(), lr=config.lr) 
 
     elif config.model == "mobilenetv2":
         model = get_MobileNetV2(num_classes=2)
-        optimizer = optim.Adam(model.parameters(), lr=config.lr)  # BUG FIX: was missing model.parameters()
-
+        optimizer = optim.Adam(model.parameters(), lr=config.lr)  
+    elif config.model == "mulki":
+        model = get_mulki(num_classes=2)
+        optimizer = optim.Adam(model.parameters(), lr=config.lr)  
     else:
         raise ValueError(f"Unknown model: {config.model}")
 
@@ -152,19 +155,8 @@ def train_model(config: TrainConfig):
             # Unscale before reading grad norms (only log on last batch of epoch)
             scaler.unscale_(optimizer)
 
-            # Clip each group separately — tighter on backbone, looser on aux
-            torch.nn.utils.clip_grad_norm_(
-                [p for g in optimizer.param_groups
-                if g.get('name') == 'spatial_backbone'
-                for p in g['params']],
-                max_norm=1.0
-            )
-            torch.nn.utils.clip_grad_norm_(
-                [p for g in optimizer.param_groups
-                if g.get('name') in ('aux_branches', 'cmaf_classifier')
-                for p in g['params']],
-                max_norm=5.0
-            )
+            if config.model == "safenet":
+                clip_gradients(optimizer)
 
             if batch_idx == len(train_loader) - 1:
                 epoch_grad_norms = log_gradient_norms(model, optimizer)
@@ -279,7 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("--loss",        type=str,   default="focal",
                         choices=["focal", "bce", "ce"])
     parser.add_argument("--model",       type=str,   default="safenet",
-                        choices=["safenet", "resnet18", "mobilenetv2", "ladevic"])
+                        choices=["safenet", "resnet18", "mobilenetv2", "ladevic", "mulki"])
     args   = parser.parse_args()
     config = TrainConfig(
         data_dir=args.data_dir,

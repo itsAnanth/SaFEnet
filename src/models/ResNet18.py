@@ -2,7 +2,7 @@
 import torch.nn as nn
 from torchvision import models
 
-def get_baseline_resnet(num_classes=2):
+def get_resnet18(num_classes=2):
     """
     Standard ResNet-18 baseline with the same backbone configuration
     (frozen trunk, unfrozen layer4) for an apples-to-apples comparison.
