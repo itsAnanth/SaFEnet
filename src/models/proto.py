@@ -88,7 +88,8 @@ class CMAF(nn.Module):
             b: nn.Parameter(torch.zeros(feat_dim))
             for b in active_branches
         })
-        nn.init.normal_(torch.stack(list(self.modality_embeddings.values())), std=0.02)
+        for emb in self.modality_embeddings.values():
+            nn.init.normal_(emb.data, std=0.02)
 
         self.use_attn = n > 1
         if self.use_attn:
