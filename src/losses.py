@@ -17,10 +17,6 @@ class BCELoss(nn.Module):
         return self.bce(inputs[:, 1], targets.float())
 
 class FocalLoss(nn.Module):
-    """
-    Focal Loss for hard example mining.
-    Down-weights well-classified examples and focuses on the hard, misclassified ones.
-    """
     def __init__(self, alpha=1.0, gamma=2.0, reduction='mean', num_classes=2):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
