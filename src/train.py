@@ -95,7 +95,7 @@ def train_model(config: TrainConfig):
 
     print("Loading data...")
     train_loader, val_loader, test_loader, classes = get_genimage_dataloaders(
-        config.data_dir, config.batch_size, config.num_workers
+        config.data_dirs, config.batch_size, config.num_workers
     )
     print(f"Classes found: {classes}")
 
@@ -308,7 +308,7 @@ def train_model(config: TrainConfig):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train AIGC Detector")
-    parser.add_argument("--data_dir",    type=str,   required=True)
+    parser.add_argument("--data_dirs",   type=str, nargs="+", required=True, help="List of data generator directories")
     parser.add_argument("--epochs",      type=int,   default=20)
     parser.add_argument("--batch_size",  type=int,   default=64)
     parser.add_argument("--lr",          type=float, default=1e-3,
@@ -327,7 +327,7 @@ if __name__ == "__main__":
     
     args   = parser.parse_args()
     config = TrainConfig(
-        data_dir=args.data_dir,
+        data_dirs=args.data_dirs,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,

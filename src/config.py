@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainConfig:
-    data_dir: str
+    data_dirs: list
     epochs: int = 10
     batch_size: int = 512
     lr: float = 1e-4

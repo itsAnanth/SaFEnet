@@ -1,6 +1,7 @@
 """
 SaFENet — Spatial and Frequency Extraction Network
-Improved architecture with:
+author: Ananth Sankar
+architecture:
   - MobileNetV2 spatial backbone + CBAM spatial attention
   - Multi-scale Sobel gradients (3x3, 5x5, 7x7) + gradient direction channel
   - Frequency branch with phase channel + radial power spectrum feature
@@ -19,7 +20,7 @@ from torchvision.models import MobileNet_V2_Weights
 
 VALID_BRANCHES = {'spatial', 'gradient', 'frequency'}
 
-# Branch output dimensions BEFORE projection (updated for new branches)
+# Branch output dimensions BEFORE projection
 BRANCH_DIMS = {
     'spatial':   1280,   # MobileNetV2 final features
     'gradient':  128,    # multi-scale + direction CNN → 128-d
@@ -27,9 +28,9 @@ BRANCH_DIMS = {
 }
 
 
-# CBAM — Convolutional Block Attention Module                                 
+# * CBAM — Convolutional Block Attention Module *
 # Applies channel + spatial attention with negligible parameter cost.         
-# Reference: Woo et al., ECCV 2018                                            
+# Reference: Woo et al.                                            
 class CBAM(nn.Module):
     def __init__(self, channels, reduction=16, kernel_size=7):
         super().__init__()
@@ -63,8 +64,8 @@ class CBAM(nn.Module):
         return x * sp_attn
 
 
-# True Cross-Modal Attention Fusion (CMAF)                                   
-# Each modality attends to the OTHER modalities (not itself).                 
+# * Cross-Modal Attention Fusion (CMAF) *
+# Each modality attends to the OTHER modalities (not itself), similar to transformer tokens.                 
 # Includes learnable modality type embeddings + post-attention FFN.           
 class CMAF(nn.Module):
     def __init__(self, active_branches, feat_dim=128, num_heads=4, ffn_mult=2, dropout=0.1):
@@ -148,10 +149,6 @@ class CMAF(nn.Module):
         self.out_dim = feat_dim  # always feat_dim after gated fusion
 
     def forward(self, branch_features: dict):
-        """
-        branch_features: {branch_name: (B, branch_dim)}
-        Returns: (B, feat_dim)
-        """
         # 1. Project + add modality embeddings
         projected = {}
         for b in self.active_branches:
@@ -312,13 +309,7 @@ class FrequencyBranch(nn.Module):
         )
 
     def _radial_power_spectrum(self, gray):
-        """
-        Compute azimuthally-averaged (radial) power spectrum.
-        Captures spectral decay differences between real and synthetic images
-        as described by Durall et al. (CVPR 2020).
 
-        Returns: (B, num_radial_bins)
-        """
         B, _, H, W = gray.shape
         fft2    = torch.fft.fft2(gray.squeeze(1))                 # (B, H, W)
         shifted = torch.fft.fftshift(fft2, dim=(-2, -1))
@@ -377,14 +368,6 @@ class SaFENet(nn.Module):
         num_heads=4,
         dropout=0.3,
     ):
-        """
-        Args:
-            num_classes:  Output classes (default 2 for binary detection).
-            branches:     Any non-empty subset of {'spatial','gradient','frequency'}.
-            feat_dim:     Common projection dimension in CMAF.
-            num_heads:    Attention heads (must divide feat_dim).
-            dropout:      Dropout rate in classifier.
-        """
         super().__init__()
 
         branches = list(dict.fromkeys(branches))
@@ -430,9 +413,7 @@ class SaFENet(nn.Module):
             num_heads=num_heads,
         )
 
-        # ------------------------------------------------------------------ #
-        # 5. Classifier Head — 2-layer MLP with GELU + dropout               #
-        # ------------------------------------------------------------------ #
+        # * Classifier Head — 2-layer MLP with GELU + dropout *
         self.classifier = nn.Sequential(
             nn.Linear(feat_dim, feat_dim // 2),
             nn.GELU(),
@@ -440,17 +421,12 @@ class SaFENet(nn.Module):
             nn.Linear(feat_dim // 2, num_classes),
         )
 
-    # ---------------------------------------------------------------------- #
-    # Helpers                                                                 #
-    # ---------------------------------------------------------------------- #
+
     @staticmethod
     def _to_gray(x):
         """BT.601 luminance: RGB → grayscale (B,1,H,W)."""
         return (0.299 * x[:, 0:1] + 0.587 * x[:, 1:2] + 0.114 * x[:, 2:3])
 
-    # ---------------------------------------------------------------------- #
-    # Forward                                                                 #
-    # ---------------------------------------------------------------------- #
     def forward(self, x):
         branch_features = {}
 
@@ -477,11 +453,10 @@ class SaFENet(nn.Module):
                 f"num_classes={self.classifier[-1].out_features})")
 
 
-# =========================================================================== #
-# Differential Learning Rate Helper                                           #
-# Returns param groups with different LRs per component.                     #
-# Usage: optimizer = Adam(get_param_groups(model), lr=1e-3)                  #
-# =========================================================================== #
+
+# Differential Learning Rate Helper                                           
+# Returns param groups with different LRs per component.                    
+# Usage: optimizer = Adam(get_param_groups(model), lr=1e-3)                  
 def get_param_groups(model, base_lr=1e-3):
     """
     Applies differential learning rates:
@@ -508,9 +483,6 @@ def get_param_groups(model, base_lr=1e-3):
     ]
 
 
-# =========================================================================== #
-# Factory                                                                     #
-# =========================================================================== #
 def get_safenet(
     branches=('spatial', 'gradient', 'frequency'),
     num_classes=2,
@@ -558,9 +530,6 @@ def aux_Warmup(epoch, model: SaFENet, AUX_WARMUP_EPOCHS=3):
                 p.requires_grad = True
             print(f"Epoch {epoch+1}: spatial backbone unfrozen")
 
-# =========================================================================== #
-# Quick sanity check                                                          #
-# =========================================================================== #
 if __name__ == '__main__':
     model = get_safenet()
     model.eval()

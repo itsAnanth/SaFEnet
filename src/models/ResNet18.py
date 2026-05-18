@@ -5,7 +5,6 @@ from torchvision import models
 def get_resnet18(num_classes=2):
     """
     Standard ResNet-18 baseline with the same backbone configuration
-    (frozen trunk, unfrozen layer4) for an apples-to-apples comparison.
     """
     weights = models.ResNet18_Weights.DEFAULT
     model   = models.resnet18(weights=weights)

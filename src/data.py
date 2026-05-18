@@ -4,7 +4,7 @@ import torch
 import kagglehub
 from PIL import Image, ImageFilter
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 
 def download_cifake(data_dir):
     """
@@ -84,17 +84,37 @@ def _split_train_val(data_dir, val_split):
     return Subset(aug_ds, idx[n_val:]), Subset(clean_ds, idx[:n_val]), aug_ds.classes
 
 
-def get_genimage_dataloaders(data_dir, batch_size=32, num_workers=4, val_split=0.2):
+def get_genimage_dataloaders(data_dirs, batch_size=32, num_workers=4, val_split=0.2):
     """
-    Loads a single Genimage generator directory (e.g. imagenet_ai_0419_biggan).
-    Expects data_dir to have 'train' and 'val' subfolders, each with 'ai' and 'nature' class dirs.
+    Loads multiple Genimage generator directories (e.g. imagenet_ai_0419_biggan, ...).
+    Expects each data_dir to have 'train' and 'val' subfolders, each with 'ai' and 'nature' class dirs.
     Splits 'train' into train/val sets and uses the provided 'val' folder as the test set.
     """
-    train_dir = os.path.join(data_dir, 'train')
-    val_dir = os.path.join(data_dir, 'val')
+    if isinstance(data_dirs, str):
+        data_dirs = [data_dirs]
 
-    train_dataset, val_dataset, classes = _split_train_val(train_dir, val_split)
-    test_dataset = datasets.ImageFolder(root=val_dir, transform=VAL_TRANSFORM)
+    train_datasets = []
+    val_datasets = []
+    test_datasets = []
+    
+    classes = None
+
+    for data_dir in data_dirs:
+        train_dir = os.path.join(data_dir, 'train')
+        val_dir = os.path.join(data_dir, 'val')
+
+        train_ds, val_ds, current_classes = _split_train_val(train_dir, val_split)
+        if classes is None:
+            classes = current_classes
+        test_ds = datasets.ImageFolder(root=val_dir, transform=VAL_TRANSFORM)
+
+        train_datasets.append(train_ds)
+        val_datasets.append(val_ds)
+        test_datasets.append(test_ds)
+
+    train_dataset = ConcatDataset(train_datasets)
+    val_dataset = ConcatDataset(val_datasets)
+    test_dataset = ConcatDataset(test_datasets)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers)

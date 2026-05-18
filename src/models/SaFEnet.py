@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+from torchvision.models import MobileNet_V2_Weights
 
 VALID_BRANCHES = {'spatial', 'gradient', 'frequency'}
 
 # Branch output dimensions before projection
 BRANCH_DIMS = {
-    'spatial':   512,
+    'spatial':   1280,
     'gradient':  32,
     'frequency': 32,
 }
@@ -102,16 +103,23 @@ class SaFENet(nn.Module):
         self.active_branches = branches
 
         # ------------------------------------------------------------------ #
-        # 1. Spatial Branch — ResNet-18 Backbone                             #
+        # 1. Spatial Branch — MobileNetV2 Backbone                           #
         # ------------------------------------------------------------------ #
         if 'spatial' in branches:
-            weights = models.ResNet18_Weights.DEFAULT
-            self.resnet = models.resnet18(weights=weights)
-            for param in self.resnet.parameters():
-                param.requires_grad = False
-            for param in self.resnet.layer4.parameters():
+            weights = MobileNet_V2_Weights.DEFAULT
+            mobilenet = models.mobilenet_v2(weights=weights)
+            
+            # Use MobileNetV2 features
+            self.spatial_backbone = nn.Sequential(
+                mobilenet.features,
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten()
+            )
+
+            # Freeze earlier layers (optional, but follows ResNet pattern)
+            for param in self.spatial_backbone.parameters():
                 param.requires_grad = True
-            self.resnet.fc = nn.Identity()   # outputs 512-d
+                
 
         # ------------------------------------------------------------------ #
         # 2. Gradient Edge CNN Branch                                         #
@@ -208,7 +216,7 @@ class SaFENet(nn.Module):
         branch_features = {}
 
         if 'spatial' in self.active_branches:
-            branch_features['spatial'] = self.resnet(x)              # (B, 512)
+            branch_features['spatial'] = self.spatial_backbone(x)              # (B, 512)
 
         # Only compute grayscale if an auxiliary branch needs it
         if 'gradient' in self.active_branches or 'frequency' in self.active_branches:
